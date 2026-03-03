@@ -141,11 +141,11 @@
   }
 
   .cn-editor .tiptap h1 {
-    @apply mt-8 mb-3 scroll-m-20 text-4xl font-extrabold tracking-tight text-balance;
+    @apply mt-8 mb-3 scroll-m-20 text-4xl font-bold tracking-tight text-balance;
   }
 
   .cn-editor .tiptap h2 {
-    @apply mt-8 mb-3 scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0;
+    @apply mt-8 mb-3 scroll-m-20 text-3xl font-semibold tracking-tight first:mt-0;
   }
 
   .cn-editor .tiptap h3 {

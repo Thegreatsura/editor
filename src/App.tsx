@@ -9,113 +9,94 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./comp
 
 const THEME_STORAGE_KEY = "pages-editor-theme";
 const COPY_FEEDBACK_MS = 1500;
-const DEFAULT_EDITOR_CONTENT_CSS = `.cn-editor .tiptap > :first-child {
-  margin-top: 0;
-}
+const DEFAULT_EDITOR_CONTENT_CSS = `@layer components {
+  .cn-editor .tiptap {
+    @apply border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm;
+  }
 
-.cn-editor .tiptap > :last-child {
-  margin-bottom: 0;
-}
+  .cn-editor .tiptap > :first-child {
+    @apply mt-0;
+  }
 
-.cn-editor .tiptap h1 {
-  margin: 2rem 0 0.75rem;
-  font-size: 2.25rem;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-}
+  .cn-editor .tiptap > :last-child {
+    @apply mb-0;
+  }
 
-.cn-editor .tiptap h2 {
-  margin: 2rem 0 0.75rem;
-  border-bottom: 1px solid hsl(var(--border));
-  padding-bottom: 0.5rem;
-  font-size: 1.875rem;
-  font-weight: 600;
-  line-height: 1.3;
-}
+  .cn-editor .tiptap h1 {
+    @apply mt-8 mb-3 scroll-m-20 text-4xl font-bold tracking-tight text-balance;
+  }
 
-.cn-editor .tiptap h3 {
-  margin: 1.5rem 0 0.5rem;
-  font-size: 1.5rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
+  .cn-editor .tiptap h2 {
+    @apply mt-8 mb-3 scroll-m-20 text-3xl font-semibold tracking-tight first:mt-0;
+  }
 
-.cn-editor .tiptap p {
-  line-height: 1.75;
-}
+  .cn-editor .tiptap h3 {
+    @apply mt-6 mb-2 scroll-m-20 text-2xl font-semibold tracking-tight;
+  }
 
-.cn-editor .tiptap p + p {
-  margin-top: 1rem;
-}
+  .cn-editor .tiptap p {
+    @apply leading-7 [&:not(:first-child)]:mt-4;
+  }
 
-.cn-editor .tiptap ul,
-.cn-editor .tiptap ol {
-  margin: 1rem 0;
-  margin-left: 1.5rem;
-}
+  .cn-editor .tiptap ul {
+    @apply my-4 ml-6 list-disc;
+  }
 
-.cn-editor .tiptap ul {
-  list-style: disc;
-}
+  .cn-editor .tiptap ol {
+    @apply my-4 ml-6 list-decimal;
+  }
 
-.cn-editor .tiptap ol {
-  list-style: decimal;
-}
+  .cn-editor .tiptap blockquote {
+    @apply mt-6 border-l-2 pl-6 italic;
+  }
 
-.cn-editor .tiptap blockquote {
-  margin-top: 1.5rem;
-  border-left: 2px solid hsl(var(--border));
-  padding-left: 1.5rem;
-  font-style: italic;
-}
+  .cn-editor .tiptap a {
+    @apply font-medium text-primary underline decoration-dotted underline-offset-4;
+  }
 
-.cn-editor .tiptap a {
-  color: hsl(var(--primary));
-  font-weight: 500;
-  text-decoration-line: underline;
-  text-decoration-style: dotted;
-  text-underline-offset: 4px;
-}
+  .cn-editor .tiptap code {
+    @apply relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm;
+  }
 
-.cn-editor .tiptap code {
-  border-radius: calc(var(--radius) - 4px);
-  background: hsl(var(--muted));
-  padding: 0.2rem 0.3rem;
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-}
+  .cn-editor .tiptap pre {
+    @apply my-4 overflow-x-auto rounded-xl bg-black/95 p-4 dark:bg-black;
+  }
 
-.cn-editor .tiptap pre {
-  margin: 1rem 0;
-  overflow-x: auto;
-  border-radius: var(--radius);
-  background: rgb(9 9 11 / 0.95);
-  padding: 1rem;
-}
+  .cn-editor .tiptap pre code {
+    @apply bg-transparent p-0 text-zinc-50 dark:text-zinc-50;
+  }
 
-.cn-editor .tiptap pre code {
-  background: transparent;
-  padding: 0;
-  color: rgb(250 250 250);
-}
+  .cn-editor .tiptap pre::selection,
+  .cn-editor .tiptap pre *::selection {
+    @apply bg-zinc-200 text-zinc-900;
+  }
 
-.cn-editor .tiptap table {
-  margin: 1rem 0;
-  width: 100%;
-  border-collapse: collapse;
-}
+  .cn-editor .tiptap table {
+    @apply my-4 w-full border-collapse;
+  }
 
-.cn-editor .tiptap th,
-.cn-editor .tiptap td {
-  border: 1px solid hsl(var(--border));
-  padding: 0.5rem 0.75rem;
-  text-align: left;
-}
+  .cn-editor .tiptap th,
+  .cn-editor .tiptap td {
+    @apply border px-3 py-2 text-left;
+  }
 
-.cn-editor .tiptap th {
-  background: hsl(var(--muted));
-  font-weight: 500;
+  .cn-editor .tiptap th {
+    @apply bg-muted font-medium;
+  }
+
+  .cn-editor .tiptap .selectedCell {
+    @apply text-foreground;
+    outline: 1px solid var(--ring);
+  }
+
+  .cn-editor .tiptap .selectedCell::after {
+    content: none;
+  }
+
+  .cn-editor .tiptap .selectedCell::selection,
+  .cn-editor .tiptap .selectedCell *::selection {
+    @apply bg-accent text-foreground;
+  }
 }
 `;
 

@@ -108,6 +108,7 @@ export function Editor({
   const [imageAltText, setImageAltText] = useState("");
   const bubbleMenuRef = useRef<HTMLDivElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
+  const lastEmittedValueRef = useRef<string>(value);
   const tiptapSurfaceClass = cn(
     "border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm",
     editorClassName,
@@ -137,6 +138,7 @@ export function Editor({
       SlashCommands,
     ],
     content: value || (format === "markdown" ? "" : "<p></p>"),
+    contentType: format,
     editorProps: {
       attributes: {
         class: tiptapSurfaceClass,
@@ -145,7 +147,9 @@ export function Editor({
     editable: !disabled,
     immediatelyRender: false,
     onUpdate: ({ editor: nextEditor }) => {
-      onChange(format === "markdown" ? nextEditor.getMarkdown() : nextEditor.getHTML());
+      const nextValue = format === "markdown" ? nextEditor.getMarkdown() : nextEditor.getHTML();
+      lastEmittedValueRef.current = nextValue;
+      onChange(nextValue);
     },
   });
 
@@ -194,12 +198,18 @@ export function Editor({
 
   useEffect(() => {
     if (!editor) return;
+    if (value === lastEmittedValueRef.current) return;
+
     const current = format === "markdown" ? editor.getMarkdown() : editor.getHTML();
-    if (value !== current) {
+    const hasChanged =
+      format === "markdown" ? value.trimEnd() !== current.trimEnd() : value !== current;
+
+    if (hasChanged) {
       editor.commands.setContent(value || (format === "markdown" ? "" : "<p></p>"), {
         emitUpdate: false,
         contentType: format,
       });
+      lastEmittedValueRef.current = value;
     }
   }, [editor, value, format]);
 

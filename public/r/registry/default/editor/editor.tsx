@@ -137,6 +137,7 @@ export function Editor({
       SlashCommands,
     ],
     content: value || (format === "markdown" ? "" : "<p></p>"),
+    contentType: format,
     editorProps: {
       attributes: {
         class: tiptapSurfaceClass,
@@ -195,7 +196,9 @@ export function Editor({
   useEffect(() => {
     if (!editor) return;
     const current = format === "markdown" ? editor.getMarkdown() : editor.getHTML();
-    if (value !== current) {
+    const hasChanged =
+      format === "markdown" ? value.trimEnd() !== current.trimEnd() : value !== current;
+    if (hasChanged) {
       editor.commands.setContent(value || (format === "markdown" ? "" : "<p></p>"), {
         emitUpdate: false,
         contentType: format,
