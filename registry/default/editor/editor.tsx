@@ -12,6 +12,7 @@ import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import { Markdown } from "@tiptap/markdown";
 import { DOMSerializer } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import {
   Bold,
   Columns3,
@@ -32,15 +33,31 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SlashCommands from "./slash-command/commands";
-import type { ImagePickerHandler } from "./slash-command/suggestion";
+import type { ImagePickerHandler, ImagePickerResult } from "./slash-command/suggestion";
 
 export type EditorFormat = "html" | "markdown";
+export type ImageFallbackMode = "data-url" | "prompt-url" | "none";
+export type ImageUploadContext = {
+  editor: ReturnType<typeof useEditor>;
+  source: "paste" | "drop";
+};
+export type ImageUploadHandler = (
+  file: File,
+  context: ImageUploadContext,
+) => ImagePickerResult | null | Promise<ImagePickerResult | null>;
+
+const DEFAULT_MAX_IMAGE_BYTES = 1_000_000;
 
 type EditorProps = {
   value?: string;
   onChange?: (value: string) => void;
   disabled?: boolean;
   format?: EditorFormat;
+  enableImages?: boolean;
+  enableImagePasteDrop?: boolean;
+  onUploadImage?: ImageUploadHandler;
+  imageFallback?: ImageFallbackMode;
+  maxImageBytes?: number;
   onRequestImage?: ImagePickerHandler;
   className?: string;
   editorClassName?: string;
@@ -99,6 +116,11 @@ export function Editor({
   onChange = () => undefined,
   disabled = false,
   format = "html",
+  enableImages = true,
+  enableImagePasteDrop = false,
+  onUploadImage,
+  imageFallback = "prompt-url",
+  maxImageBytes = DEFAULT_MAX_IMAGE_BYTES,
   onRequestImage,
   className,
   editorClassName,
@@ -146,7 +168,9 @@ export function Editor({
       }),
       Markdown,
       SlashCommands.configure({
-        onRequestImage: onRequestImage ?? null,
+        onRequestImage: enableImages ? (onRequestImage ?? null) : null,
+        enableImages,
+        imageSlashFallback: imageFallback === "prompt-url" ? "prompt-url" : "none",
       }),
     ],
     content: value || (format === "markdown" ? "" : "<p></p>"),
@@ -181,6 +205,30 @@ export function Editor({
           copyEvent.preventDefault();
           return true;
         },
+      },
+      handlePaste: (_view, event) => {
+        if (!enableImages || !enableImagePasteDrop) return false;
+        const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
+          file.type.startsWith("image/"),
+        );
+        if (!files.length) return false;
+        void insertImagesFromFiles(files, "paste");
+        return true;
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved || !enableImages || !enableImagePasteDrop) return false;
+        const files = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
+          file.type.startsWith("image/"),
+        );
+        if (!files.length) return false;
+
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (coords?.pos != null) {
+          view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, coords.pos)));
+        }
+
+        void insertImagesFromFiles(files, "drop");
+        return true;
       },
     },
     editable: !disabled,
@@ -307,7 +355,7 @@ export function Editor({
         editor.isActive("tableRow") ||
         editor.isActive("tableHeader") ||
         editor.isActive("tableCell");
-      const nextIsOnImage = editor.isActive("image");
+      const nextIsOnImage = enableImages && editor.isActive("image");
 
       setIsInTable(nextIsInTable);
       if (!nextIsInTable) setShowTableActions(false);
@@ -323,9 +371,58 @@ export function Editor({
       editor.off("selectionUpdate", updateTableContext);
       editor.off("transaction", updateTableContext);
     };
-  }, [editor]);
+  }, [editor, enableImages]);
 
   if (!editor) return null;
+
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Failed to read image file."));
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.readAsDataURL(file);
+    });
+
+  const resolveImageFromFile = async (
+    file: File,
+    source: "paste" | "drop",
+  ): Promise<ImagePickerResult | null> => {
+    if (!file.type.startsWith("image/")) return null;
+
+    if (onUploadImage) {
+      const uploaded = await onUploadImage(file, { editor, source });
+      if (uploaded?.src) return uploaded;
+    }
+
+    if (imageFallback !== "data-url") return null;
+    if (file.size > maxImageBytes) {
+      console.warn(
+        `[Editor] Skipping image "${file.name}" (${file.size} bytes) because it exceeds maxImageBytes (${maxImageBytes}).`,
+      );
+      return null;
+    }
+
+    return {
+      src: await fileToDataUrl(file),
+      alt: file.name || null,
+    };
+  };
+
+  const insertImagesFromFiles = async (files: File[], source: "paste" | "drop") => {
+    for (const file of files) {
+      const image = await resolveImageFromFile(file, source);
+      if (!image?.src) continue;
+      editor
+        .chain()
+        .focus()
+        .setImage({
+          src: image.src,
+          alt: image.alt ?? null,
+          title: image.title ?? null,
+        })
+        .run();
+    }
+  };
 
   const setBlockType = (next: BlockType) => {
     const chain = editor.chain().focus();
@@ -422,7 +519,7 @@ export function Editor({
   };
 
   const toggleAltInput = () => {
-    if (!isOnImage) return;
+    if (!enableImages || !isOnImage) return;
     if (showAltInput) {
       setShowAltInput(false);
       return;
@@ -458,7 +555,7 @@ export function Editor({
   };
 
   const applyImageAlt = () => {
-    if (!isOnImage) return;
+    if (!enableImages || !isOnImage) return;
     const trimmed = imageAltText.trim();
     editor
       .chain()
@@ -471,7 +568,7 @@ export function Editor({
   };
 
   const clearImageAlt = () => {
-    if (!isOnImage) return;
+    if (!enableImages || !isOnImage) return;
     editor.chain().focus().updateAttributes("image", { alt: null }).run();
     setImageAltText("");
     setShowAltInput(false);

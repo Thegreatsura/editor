@@ -19,8 +19,12 @@ export type ImagePickerHandler = (
   context: ImagePickerContext,
 ) => ImagePickerResult | null | Promise<ImagePickerResult | null>;
 
+export type SlashImageFallback = "prompt-url" | "none";
+
 type SuggestionOptions = {
   onRequestImage?: ImagePickerHandler | null;
+  enableImages?: boolean;
+  imageSlashFallback?: SlashImageFallback;
 };
 
 type SuggestionProps = {
@@ -34,14 +38,19 @@ const requestImageAndInsert = async ({
   editor,
   range,
   onRequestImage,
-}: ImagePickerContext & { onRequestImage?: ImagePickerHandler | null }) => {
-  const result = onRequestImage
-    ? await onRequestImage({ editor, range })
-    : (() => {
-        const src = window.prompt("Image URL")?.trim();
-        if (!src) return null;
-        return { src } satisfies ImagePickerResult;
-      })();
+  imageSlashFallback = "prompt-url",
+}: ImagePickerContext & {
+  onRequestImage?: ImagePickerHandler | null;
+  imageSlashFallback?: SlashImageFallback;
+}) => {
+
+  let result: ImagePickerResult | null = null;
+  if (onRequestImage) {
+    result = await onRequestImage({ editor, range });
+  } else if (imageSlashFallback === "prompt-url") {
+    const src = window.prompt("Image URL")?.trim();
+    result = src ? ({ src } satisfies ImagePickerResult) : null;
+  }
 
   if (!result?.src) return;
 
@@ -96,6 +105,7 @@ const getAllItems = (options: SuggestionOptions): SlashItem[] => [
         editor,
         range,
         onRequestImage: options.onRequestImage,
+        imageSlashFallback: options.imageSlashFallback,
       });
     },
   },
@@ -120,6 +130,7 @@ const getAllItems = (options: SuggestionOptions): SlashItem[] => [
 const createSuggestion = (options: SuggestionOptions = {}) => ({
   items: ({ query }: { query: string }) =>
     getAllItems(options)
+      .filter((item) => options.enableImages !== false || item.title !== "Image")
       .filter((item) => item.title.toLowerCase().includes(query.toLowerCase()))
       .slice(0, 10),
 

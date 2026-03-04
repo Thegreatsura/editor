@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./comp
 const THEME_STORAGE_KEY = "pages-editor-theme";
 const COPY_FEEDBACK_MS = 1500;
 const DEFAULT_EDITOR_CONTENT_CSS = `@layer components {
-  .cn-editor .tiptap {
+   .cn-editor .tiptap {
     @apply border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm;
   }
 
@@ -47,7 +47,15 @@ const DEFAULT_EDITOR_CONTENT_CSS = `@layer components {
   }
 
   .cn-editor .tiptap blockquote {
-    @apply mt-6 border-l-2 pl-6 italic;
+    @apply my-6 border-l-2 pl-6 italic;
+  }
+
+  .cn-editor .tiptap img {
+    @apply my-4 transition-shadow;
+    
+    &.ProseMirror-selectednode {
+      @apply ring-1;
+    }
   }
 
   .cn-editor .tiptap a {
@@ -59,16 +67,11 @@ const DEFAULT_EDITOR_CONTENT_CSS = `@layer components {
   }
 
   .cn-editor .tiptap pre {
-    @apply my-4 overflow-x-auto rounded-xl bg-black/95 p-4 dark:bg-black;
+    @apply my-4 overflow-x-auto rounded-xl bg-background p-4;
   }
 
   .cn-editor .tiptap pre code {
-    @apply bg-transparent p-0 text-zinc-50 dark:text-zinc-50;
-  }
-
-  .cn-editor .tiptap pre::selection,
-  .cn-editor .tiptap pre *::selection {
-    @apply bg-zinc-200 text-zinc-900;
+    @apply bg-transparent p-0;
   }
 
   .cn-editor .tiptap table {
@@ -95,10 +98,9 @@ const DEFAULT_EDITOR_CONTENT_CSS = `@layer components {
 
   .cn-editor .tiptap .selectedCell::selection,
   .cn-editor .tiptap .selectedCell *::selection {
-    @apply bg-accent text-foreground;
+    @apply bg-accent text-foreground!;
   }
-}
-`;
+}`;
 
 const INITIAL_MARKDOWN_VALUE = `Start writing in Markdown or use the bubble menu in editor mode.
 
@@ -125,6 +127,14 @@ type HighlightedCodeProps = {
   lang: BundledLanguage;
   dark: boolean;
 };
+
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
+  });
 
 function HighlightedCode({ code, lang, dark }: HighlightedCodeProps) {
   const [html, setHtml] = useState("");
@@ -281,7 +291,23 @@ export default function App() {
               <TabsTrigger value="source">Source</TabsTrigger>
             </TabsList>
             <TabsContent value="editor">
-              <Editor value={markdownValue} onChange={setMarkdownValue} format="markdown" />
+              <Editor
+                value={markdownValue}
+                onChange={setMarkdownValue}
+                format="markdown"
+                enableImages
+                enableImagePasteDrop
+                imageFallback="data-url"
+                maxImageBytes={2_000_000}
+                onRequestImage={async () => {
+                  const src = window.prompt("Image URL");
+                  return src ? { src } : null;
+                }}
+                onUploadImage={async (file) => ({
+                  src: await fileToDataUrl(file),
+                  alt: file.name || null,
+                })}
+              />
             </TabsContent>
             <TabsContent value="source">
               <Textarea
@@ -317,7 +343,7 @@ export default function App() {
             Use controlled state and pass <code className={inlineCodeClass}>format="markdown"</code> or{" "}
             <code className={inlineCodeClass}>format="html"</code> depending on how you store content. You can also
             pass <code className={inlineCodeClass}>onRequestImage</code> to replace the default image prompt with your
-            own modal or picker.
+            own modal or picker, plus <code className={inlineCodeClass}>onUploadImage</code> for paste/drop uploads.
           </p>
           <HighlightedCode
             dark={resolvedIsDark}
@@ -337,6 +363,12 @@ export function Example() {
         if (!src) return null
         return { src, alt: "Optional alt text" }
       }}
+      enableImagePasteDrop
+      imageFallback="data-url"
+      onUploadImage={async (file) => ({
+        src: await fileToDataUrl(file),
+        alt: file.name,
+      })}
     />
   )
 }`}
@@ -464,6 +496,34 @@ export function EditorWithSourceToggle() {
                 </tr>
                 <tr className="border-b">
                   <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>enableImages</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>boolean</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>true</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    Enables image-related behaviors (slash command and image actions).
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>enableImagePasteDrop</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>boolean</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>false</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    Enables image file paste and drag/drop insertion.
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="p-2 align-top">
                     <code className={inlineCodeClass}>onRequestImage</code>
                   </td>
                   <td className="p-2 align-top">
@@ -476,6 +536,50 @@ export function EditorWithSourceToggle() {
                     Called when the user picks the Image slash command. Return image data to insert it; return{" "}
                     <code className={inlineCodeClass}>null</code> to cancel. If omitted, the editor falls back to a
                     native URL prompt.
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>onUploadImage</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>
+                      (file, ctx) =&gt; {"{ src, alt?, title? }"} | null | Promise&lt;{"{ src, alt?, title? }"} | null&gt;
+                    </code>
+                  </td>
+                  <td className="p-2 align-top">-</td>
+                  <td className="p-2 align-top">
+                    Called for pasted or dropped image files. Return image data to insert. If missing or returning{" "}
+                    <code className={inlineCodeClass}>null</code>, fallback behavior is used.
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>imageFallback</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>"data-url" | "prompt-url" | "none"</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>"prompt-url"</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    Fallback strategy when no image callback inserts content. For paste/drop, only{" "}
+                    <code className={inlineCodeClass}>"data-url"</code> can insert from files.
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>maxImageBytes</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>number</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>1000000</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    Max file size used by <code className={inlineCodeClass}>"data-url"</code> fallback.
                   </td>
                 </tr>
                 <tr className="border-b">
