@@ -4,6 +4,25 @@ import tippy, { type Instance as TippyInstance } from "tippy.js";
 import CommandsList, { type CommandsListHandle, type SlashItem } from "./commands-list";
 import { Code, Heading1, Heading2, Heading3, Image, List, ListOrdered, Pilcrow, Quote, Table } from "lucide-react";
 
+export type ImagePickerResult = {
+  src: string;
+  alt?: string | null;
+  title?: string | null;
+};
+
+export type ImagePickerContext = {
+  editor: Editor;
+  range: { from: number; to: number };
+};
+
+export type ImagePickerHandler = (
+  context: ImagePickerContext,
+) => ImagePickerResult | null | Promise<ImagePickerResult | null>;
+
+type SuggestionOptions = {
+  onRequestImage?: ImagePickerHandler | null;
+};
+
 type SuggestionProps = {
   editor: Editor;
   range: { from: number; to: number };
@@ -11,7 +30,34 @@ type SuggestionProps = {
   clientRect?: (() => DOMRect | null) | null;
 };
 
-const allItems: SlashItem[] = [
+const requestImageAndInsert = async ({
+  editor,
+  range,
+  onRequestImage,
+}: ImagePickerContext & { onRequestImage?: ImagePickerHandler | null }) => {
+  const result = onRequestImage
+    ? await onRequestImage({ editor, range })
+    : (() => {
+        const src = window.prompt("Image URL")?.trim();
+        if (!src) return null;
+        return { src } satisfies ImagePickerResult;
+      })();
+
+  if (!result?.src) return;
+
+  editor
+    .chain()
+    .focus()
+    .deleteRange(range)
+    .setImage({
+      src: result.src,
+      alt: result.alt ?? null,
+      title: result.title ?? null,
+    })
+    .run();
+};
+
+const getAllItems = (options: SuggestionOptions): SlashItem[] => [
   {
     title: "Text",
     icon: Pilcrow,
@@ -46,9 +92,11 @@ const allItems: SlashItem[] = [
     title: "Image",
     icon: Image,
     command: ({ editor, range }) => {
-      const src = window.prompt("Image URL");
-      if (!src) return;
-      editor.chain().focus().deleteRange(range).setImage({ src }).run();
+      void requestImageAndInsert({
+        editor,
+        range,
+        onRequestImage: options.onRequestImage,
+      });
     },
   },
   {
@@ -69,9 +117,11 @@ const allItems: SlashItem[] = [
   },
 ];
 
-export default {
+const createSuggestion = (options: SuggestionOptions = {}) => ({
   items: ({ query }: { query: string }) =>
-    allItems.filter((item) => item.title.toLowerCase().includes(query.toLowerCase())).slice(0, 10),
+    getAllItems(options)
+      .filter((item) => item.title.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 10),
 
   render: () => {
     let component: ReactRenderer<CommandsListHandle> | null = null;
@@ -120,4 +170,6 @@ export default {
       },
     };
   },
-};
+});
+
+export default createSuggestion;

@@ -315,7 +315,9 @@ export default function App() {
           </h3>
           <p className="leading-relaxed [&:not(:first-child)]:mt-6">
             Use controlled state and pass <code className={inlineCodeClass}>format="markdown"</code> or{" "}
-            <code className={inlineCodeClass}>format="html"</code> depending on how you store content.
+            <code className={inlineCodeClass}>format="html"</code> depending on how you store content. You can also
+            pass <code className={inlineCodeClass}>onRequestImage</code> to replace the default image prompt with your
+            own modal or picker.
           </p>
           <HighlightedCode
             dark={resolvedIsDark}
@@ -330,6 +332,11 @@ export function Example() {
     <Editor
       value={value}
       onChange={setValue}
+      onRequestImage={async () => {
+        const src = window.prompt("Custom image URL")
+        if (!src) return null
+        return { src, alt: "Optional alt text" }
+      }}
     />
   )
 }`}
@@ -454,6 +461,22 @@ export function EditorWithSourceToggle() {
                     <code className={inlineCodeClass}>false</code>
                   </td>
                   <td className="p-2 align-top">Disables editing and toolbar actions.</td>
+                </tr>
+                <tr className="border-b">
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>onRequestImage</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>
+                      (ctx) =&gt; {"{ src, alt?, title? }"} | null | Promise&lt;{"{ src, alt?, title? }"} | null&gt;
+                    </code>
+                  </td>
+                  <td className="p-2 align-top">-</td>
+                  <td className="p-2 align-top">
+                    Called when the user picks the Image slash command. Return image data to insert it; return{" "}
+                    <code className={inlineCodeClass}>null</code> to cancel. If omitted, the editor falls back to a
+                    native URL prompt.
+                  </td>
                 </tr>
                 <tr className="border-b">
                   <td className="p-2 align-top">

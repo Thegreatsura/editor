@@ -2,6 +2,7 @@ import { type HTMLAttributes, useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
+import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
@@ -10,6 +11,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import { Markdown } from "@tiptap/markdown";
+import { DOMSerializer } from "@tiptap/pm/model";
 import {
   Bold,
   Columns3,
@@ -30,6 +32,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SlashCommands from "./slash-command/commands";
+import type { ImagePickerHandler } from "./slash-command/suggestion";
 
 export type EditorFormat = "html" | "markdown";
 
@@ -38,6 +41,7 @@ type EditorProps = {
   onChange?: (value: string) => void;
   disabled?: boolean;
   format?: EditorFormat;
+  onRequestImage?: ImagePickerHandler;
   className?: string;
   editorClassName?: string;
 } & Omit<HTMLAttributes<HTMLDivElement>, "onChange" | "className">;
@@ -95,6 +99,7 @@ export function Editor({
   onChange = () => undefined,
   disabled = false,
   format = "html",
+  onRequestImage,
   className,
   editorClassName,
   ...props
@@ -110,7 +115,7 @@ export function Editor({
   const linkInputRef = useRef<HTMLInputElement>(null);
   const lastEmittedValueRef = useRef<string>(value);
   const tiptapSurfaceClass = cn(
-    "border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm",
+    "border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm [&_p.is-empty::before]:text-muted-foreground [&_p.is-empty::before]:content-[attr(data-placeholder)] [&_p.is-empty::before]:pointer-events-none [&_p.is-empty::before]:float-left [&_p.is-empty::before]:h-0",
     editorClassName,
   );
 
@@ -134,14 +139,48 @@ export function Editor({
       TableRow,
       TableHeader,
       TableCell,
+      Placeholder.configure({
+        placeholder: ({ node }) => (node.type.name === "paragraph" ? "Press '/' for commands" : ""),
+        showOnlyCurrent: true,
+        includeChildren: true,
+      }),
       Markdown,
-      SlashCommands,
+      SlashCommands.configure({
+        onRequestImage: onRequestImage ?? null,
+      }),
     ],
     content: value || (format === "markdown" ? "" : "<p></p>"),
     contentType: format,
     editorProps: {
       attributes: {
         class: tiptapSurfaceClass,
+      },
+      handleDOMEvents: {
+        copy: (_view, event) => {
+          if (!editor) return false;
+
+          const copyEvent = event as ClipboardEvent;
+          if (!copyEvent.clipboardData || editor.state.selection.empty) return false;
+
+          const selectionFragment = editor.state.selection.content().content;
+
+          if (format === "markdown") {
+            const markdown = editor.storage.markdown?.manager?.serialize(selectionFragment.toJSON()) ?? "";
+            copyEvent.clipboardData.setData("text/plain", markdown);
+            copyEvent.preventDefault();
+            return true;
+          }
+
+          const serializer = DOMSerializer.fromSchema(editor.state.schema);
+          const container = document.createElement("div");
+          container.append(serializer.serializeFragment(selectionFragment));
+          const html = container.innerHTML;
+
+          copyEvent.clipboardData.setData("text/html", html);
+          copyEvent.clipboardData.setData("text/plain", html);
+          copyEvent.preventDefault();
+          return true;
+        },
       },
     },
     editable: !disabled,
