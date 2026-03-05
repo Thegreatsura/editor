@@ -359,9 +359,9 @@ export function Example() {
       value={value}
       onChange={setValue}
       onRequestImage={async () => {
-        const src = window.prompt("Custom image URL")
-        if (!src) return null
-        return { src, alt: "Optional alt text" }
+        const src = window.prompt("Use URL? Leave empty to simulate file upload")
+        if (src) return { src, alt: "Optional alt text" }
+        return { file: new File(["demo"], "demo.png", { type: "image/png" }) }
       }}
       enableImagePasteDrop
       imageFallback="data-url"
@@ -528,7 +528,7 @@ export function EditorWithSourceToggle() {
                   </td>
                   <td className="p-2 align-top">
                     <code className={inlineCodeClass}>
-                      (ctx) =&gt; {"{ src, alt?, title? }"} | null | Promise&lt;{"{ src, alt?, title? }"} | null&gt;
+                      (ctx) =&gt; {"{ src, alt?, title? } | { file, alt?, title? }"} | null | Promise&lt;{"{ src, alt?, title? } | { file, alt?, title? }"} | null&gt;
                     </code>
                   </td>
                   <td className="p-2 align-top">-</td>
@@ -580,6 +580,18 @@ export function EditorWithSourceToggle() {
                   </td>
                   <td className="p-2 align-top">
                     Max file size used by <code className={inlineCodeClass}>"data-url"</code> fallback.
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>onPendingUploadsChange</code>
+                  </td>
+                  <td className="p-2 align-top">
+                    <code className={inlineCodeClass}>(count: number) =&gt; void</code>
+                  </td>
+                  <td className="p-2 align-top">-</td>
+                  <td className="p-2 align-top">
+                    Called when pending optimistic uploads change. Use it to gate autosave/save/navigation.
                   </td>
                 </tr>
                 <tr className="border-b">

@@ -1,4 +1,5 @@
 import { type HTMLAttributes, useEffect, useRef, useState } from "react";
+import type { Editor as TiptapEditor } from "@tiptap/core";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
@@ -33,20 +34,50 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SlashCommands from "./slash-command/commands";
-import type { ImagePickerHandler, ImagePickerResult } from "./slash-command/suggestion";
+import type { ImagePickerHandler } from "./slash-command/suggestion";
 
 export type EditorFormat = "html" | "markdown";
 export type ImageFallbackMode = "data-url" | "prompt-url" | "none";
 export type ImageUploadContext = {
-  editor: ReturnType<typeof useEditor>;
-  source: "paste" | "drop";
+  editor: TiptapEditor;
+  source: "paste" | "drop" | "slash";
+};
+export type ImageUploadResult = {
+  src: string;
+  alt?: string | null;
+  title?: string | null;
 };
 export type ImageUploadHandler = (
   file: File,
   context: ImageUploadContext,
-) => ImagePickerResult | null | Promise<ImagePickerResult | null>;
+) => ImageUploadResult | null | Promise<ImageUploadResult | null>;
 
 const DEFAULT_MAX_IMAGE_BYTES = 1_000_000;
+const UploadableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      uploadId: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-upload-id"),
+        renderHTML: (attributes: { uploadId?: string | null }) =>
+          attributes.uploadId ? { "data-upload-id": attributes.uploadId } : {},
+      },
+      uploading: {
+        default: false,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-uploading") === "true",
+        renderHTML: (attributes: { uploading?: boolean }) =>
+          attributes.uploading ? { "data-uploading": "true" } : {},
+      },
+      uploadError: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-upload-error"),
+        renderHTML: (attributes: { uploadError?: string | null }) =>
+          attributes.uploadError ? { "data-upload-error": attributes.uploadError } : {},
+      },
+    };
+  },
+});
 
 type EditorProps = {
   value?: string;
@@ -59,6 +90,7 @@ type EditorProps = {
   imageFallback?: ImageFallbackMode;
   maxImageBytes?: number;
   onRequestImage?: ImagePickerHandler;
+  onPendingUploadsChange?: (count: number) => void;
   className?: string;
   editorClassName?: string;
 } & Omit<HTMLAttributes<HTMLDivElement>, "onChange" | "className">;
@@ -122,6 +154,7 @@ export function Editor({
   imageFallback = "prompt-url",
   maxImageBytes = DEFAULT_MAX_IMAGE_BYTES,
   onRequestImage,
+  onPendingUploadsChange,
   className,
   editorClassName,
   ...props
@@ -136,8 +169,11 @@ export function Editor({
   const bubbleMenuRef = useRef<HTMLDivElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
   const lastEmittedValueRef = useRef<string>(value);
+  const pendingUploadsRef = useRef(0);
+  const objectUrlByUploadIdRef = useRef(new Map<string, string>());
+  const expectedBlobByUploadIdRef = useRef(new Map<string, string>());
   const tiptapSurfaceClass = cn(
-    "border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm [&_p.is-empty::before]:text-muted-foreground [&_p.is-empty::before]:content-[attr(data-placeholder)] [&_p.is-empty::before]:pointer-events-none [&_p.is-empty::before]:float-left [&_p.is-empty::before]:h-0",
+    "border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm [&_p.is-empty::before]:text-muted-foreground [&_p.is-empty::before]:content-[attr(data-placeholder)] [&_p.is-empty::before]:pointer-events-none [&_p.is-empty::before]:float-left [&_p.is-empty::before]:h-0 [&_img[data-uploading=true]]:opacity-70 [&_img[data-uploading=true]]:animate-pulse [&_img[data-upload-error]]:ring-2 [&_img[data-upload-error]]:ring-destructive [&_img[data-upload-error]]:ring-offset-2 [&_img[data-upload-error]]:ring-offset-background",
     editorClassName,
   );
 
@@ -156,7 +192,7 @@ export function Editor({
           target: null,
         },
       }),
-      Image,
+      UploadableImage,
       Table,
       TableRow,
       TableHeader,
@@ -169,6 +205,9 @@ export function Editor({
       Markdown,
       SlashCommands.configure({
         onRequestImage: enableImages ? (onRequestImage ?? null) : null,
+        onInsertLocalImageFile: ({ file, alt, title }) => {
+          void insertLocalImageFile(file, "slash", { alt: alt ?? null, title: title ?? null });
+        },
         enableImages,
         imageSlashFallback: imageFallback === "prompt-url" ? "prompt-url" : "none",
       }),
@@ -234,7 +273,14 @@ export function Editor({
     editable: !disabled,
     immediatelyRender: false,
     onUpdate: ({ editor: nextEditor }) => {
-      const nextValue = format === "markdown" ? nextEditor.getMarkdown() : nextEditor.getHTML();
+      const nextValue =
+        format === "markdown"
+          ? nextEditor.getMarkdown()
+          : nextEditor
+              .getHTML()
+              .replace(/\sdata-upload-id="[^"]*"/g, "")
+              .replace(/\sdata-uploading="[^"]*"/g, "")
+              .replace(/\sdata-upload-error="[^"]*"/g, "");
       lastEmittedValueRef.current = nextValue;
       onChange(nextValue);
     },
@@ -373,7 +419,31 @@ export function Editor({
     };
   }, [editor, enableImages]);
 
+  useEffect(() => {
+    onPendingUploadsChange?.(pendingUploadsRef.current);
+
+    return () => {
+      for (const url of objectUrlByUploadIdRef.current.values()) {
+        URL.revokeObjectURL(url);
+      }
+      objectUrlByUploadIdRef.current.clear();
+      expectedBlobByUploadIdRef.current.clear();
+      pendingUploadsRef.current = 0;
+      onPendingUploadsChange?.(0);
+    };
+  }, [onPendingUploadsChange]);
+
   if (!editor) return null;
+
+  const updatePendingUploads = (delta: number) => {
+    pendingUploadsRef.current = Math.max(0, pendingUploadsRef.current + delta);
+    onPendingUploadsChange?.(pendingUploadsRef.current);
+  };
+
+  const createUploadId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `upload-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
   const fileToDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -383,44 +453,124 @@ export function Editor({
       reader.readAsDataURL(file);
     });
 
-  const resolveImageFromFile = async (
+  const findImageNodeByUploadId = (uploadId: string) => {
+    let match: { pos: number; attrs: Record<string, unknown> } | null = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== "image") return true;
+      if (node.attrs.uploadId === uploadId) {
+        match = { pos, attrs: node.attrs as Record<string, unknown> };
+        return false;
+      }
+      return true;
+    });
+    return match;
+  };
+
+  const finalizeImageUpload = (
+    uploadId: string,
+    updater: (currentAttrs: Record<string, unknown>) => Record<string, unknown> | null,
+  ) => {
+    const match = findImageNodeByUploadId(uploadId);
+    if (!match) return false;
+
+    const nextAttrs = updater(match.attrs);
+    if (!nextAttrs) return false;
+
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(match.pos, undefined, nextAttrs));
+    return true;
+  };
+
+  const cleanupUpload = (uploadId: string, options?: { revokeBlob?: boolean }) => {
+    const shouldRevoke = options?.revokeBlob ?? true;
+    const objectUrl = objectUrlByUploadIdRef.current.get(uploadId);
+    if (shouldRevoke && objectUrl) URL.revokeObjectURL(objectUrl);
+    if (shouldRevoke) {
+      objectUrlByUploadIdRef.current.delete(uploadId);
+    }
+    expectedBlobByUploadIdRef.current.delete(uploadId);
+    updatePendingUploads(-1);
+  };
+
+  const insertLocalImageFile = async (
     file: File,
-    source: "paste" | "drop",
-  ): Promise<ImagePickerResult | null> => {
-    if (!file.type.startsWith("image/")) return null;
+    source: "paste" | "drop" | "slash",
+    initialAttrs?: { alt?: string | null; title?: string | null },
+  ) => {
+    if (!file.type.startsWith("image/")) return;
+    const uploadId = createUploadId();
+    const blobUrl = URL.createObjectURL(file);
+    const fallbackAlt = initialAttrs?.alt ?? file.name ?? null;
 
-    if (onUploadImage) {
-      const uploaded = await onUploadImage(file, { editor, source });
-      if (uploaded?.src) return uploaded;
+    objectUrlByUploadIdRef.current.set(uploadId, blobUrl);
+    expectedBlobByUploadIdRef.current.set(uploadId, blobUrl);
+    updatePendingUploads(1);
+
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: "image",
+        attrs: {
+          src: blobUrl,
+          alt: fallbackAlt,
+          title: initialAttrs?.title ?? null,
+          uploadId,
+          uploading: true,
+          uploadError: null,
+        },
+      })
+      .run();
+
+    try {
+      let resolved: ImageUploadResult | null = null;
+      if (onUploadImage) {
+        resolved = await onUploadImage(file, { editor, source });
+      } else if (imageFallback === "data-url") {
+        if (file.size <= maxImageBytes) {
+          resolved = { src: await fileToDataUrl(file), alt: fallbackAlt };
+        }
+      }
+
+      if (!resolved?.src) {
+        finalizeImageUpload(uploadId, (attrs) => ({
+          ...attrs,
+          uploading: false,
+          uploadError: "Upload failed",
+        }));
+        cleanupUpload(uploadId, { revokeBlob: false });
+        return;
+      }
+
+      finalizeImageUpload(uploadId, (attrs) => {
+        const expectedBlob = expectedBlobByUploadIdRef.current.get(uploadId);
+        const currentSrc = typeof attrs.src === "string" ? attrs.src : "";
+        if (!expectedBlob || currentSrc !== expectedBlob) return null;
+
+        return {
+          ...attrs,
+          src: resolved.src,
+          alt: resolved.alt ?? attrs.alt ?? null,
+          title: resolved.title ?? attrs.title ?? null,
+          uploading: false,
+          uploadError: null,
+          uploadId: null,
+        };
+      });
+
+      cleanupUpload(uploadId, { revokeBlob: true });
+    } catch (error) {
+      finalizeImageUpload(uploadId, (attrs) => ({
+        ...attrs,
+        uploading: false,
+        uploadError: error instanceof Error ? error.message : "Upload failed",
+      }));
+      cleanupUpload(uploadId, { revokeBlob: false });
     }
-
-    if (imageFallback !== "data-url") return null;
-    if (file.size > maxImageBytes) {
-      console.warn(
-        `[Editor] Skipping image "${file.name}" (${file.size} bytes) because it exceeds maxImageBytes (${maxImageBytes}).`,
-      );
-      return null;
-    }
-
-    return {
-      src: await fileToDataUrl(file),
-      alt: file.name || null,
-    };
   };
 
   const insertImagesFromFiles = async (files: File[], source: "paste" | "drop") => {
     for (const file of files) {
-      const image = await resolveImageFromFile(file, source);
-      if (!image?.src) continue;
-      editor
-        .chain()
-        .focus()
-        .setImage({
-          src: image.src,
-          alt: image.alt ?? null,
-          title: image.title ?? null,
-        })
-        .run();
+      await insertLocalImageFile(file, source);
     }
   };
 

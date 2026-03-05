@@ -4,11 +4,19 @@ import tippy, { type Instance as TippyInstance } from "tippy.js";
 import CommandsList, { type CommandsListHandle, type SlashItem } from "./commands-list";
 import { Code, Heading1, Heading2, Heading3, Image, List, ListOrdered, Pilcrow, Quote, Table } from "lucide-react";
 
-export type ImagePickerResult = {
+export type ImagePickerUrlResult = {
   src: string;
   alt?: string | null;
   title?: string | null;
 };
+
+export type ImagePickerFileResult = {
+  file: File;
+  alt?: string | null;
+  title?: string | null;
+};
+
+export type ImagePickerResult = ImagePickerUrlResult | ImagePickerFileResult;
 
 export type ImagePickerContext = {
   editor: Editor;
@@ -23,6 +31,7 @@ export type SlashImageFallback = "prompt-url" | "none";
 
 type SuggestionOptions = {
   onRequestImage?: ImagePickerHandler | null;
+  onInsertLocalImageFile?: ((context: ImagePickerContext & ImagePickerFileResult) => void | Promise<void>) | null;
   enableImages?: boolean;
   imageSlashFallback?: SlashImageFallback;
 };
@@ -41,18 +50,30 @@ const requestImageAndInsert = async ({
   imageSlashFallback = "prompt-url",
 }: ImagePickerContext & {
   onRequestImage?: ImagePickerHandler | null;
+  onInsertLocalImageFile?: ((context: ImagePickerContext & ImagePickerFileResult) => void | Promise<void>) | null;
   imageSlashFallback?: SlashImageFallback;
 }) => {
-
   let result: ImagePickerResult | null = null;
   if (onRequestImage) {
     result = await onRequestImage({ editor, range });
   } else if (imageSlashFallback === "prompt-url") {
     const src = window.prompt("Image URL")?.trim();
-    result = src ? ({ src } satisfies ImagePickerResult) : null;
+    result = src ? { src } : null;
   }
 
-  if (!result?.src) return;
+  if (!result) return;
+
+  if ("file" in result) {
+    if (!onInsertLocalImageFile) return;
+    await onInsertLocalImageFile({
+      editor,
+      range,
+      file: result.file,
+      alt: result.alt,
+      title: result.title,
+    });
+    return;
+  }
 
   editor
     .chain()
@@ -105,6 +126,7 @@ const getAllItems = (options: SuggestionOptions): SlashItem[] => [
         editor,
         range,
         onRequestImage: options.onRequestImage,
+        onInsertLocalImageFile: options.onInsertLocalImageFile,
         imageSlashFallback: options.imageSlashFallback,
       });
     },

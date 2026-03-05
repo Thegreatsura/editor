@@ -81,6 +81,20 @@ Notes:
 - `className` applies classes to the root wrapper (`cn-editor`).
 - `editorClassName` applies classes to the WYSIWYG surface only.
 
+## Image Workflows
+
+`Editor` supports both pre-uploaded URLs and local file uploads.
+
+- Slash image selector:
+  - Return `{ src }` from `onRequestImage` if the image is already uploaded.
+  - Return `{ file }` from `onRequestImage` to run optimistic upload flow.
+- Paste/drop:
+  - Enable with `enableImagePasteDrop`.
+  - Provide `onUploadImage` to upload files and return final `{ src }`.
+  - Optional fallback with `imageFallback="data-url"` for base64 insertion.
+- Pending uploads:
+  - Use `onPendingUploadsChange` to disable autosave/publish while uploads are in progress.
+
 ## Implement Your Own Source Toggle
 
 `Editor` is intentionally focused on rich-text editing. If you need a source view, keep a single shared `value` state and switch between `Editor` and your own text input.
@@ -130,6 +144,13 @@ export function EditorWithSourceToggle() {
 | `onChange` | `(value: string) => void` | - | Called whenever content changes. |
 | `format` | `"markdown" \| "html"` | `"html"` | Parsing and output format. |
 | `disabled` | `boolean` | `false` | Disables editing and toolbar actions. |
+| `enableImages` | `boolean` | `true` | Enables image-related behaviors (slash command and image actions). |
+| `enableImagePasteDrop` | `boolean` | `false` | Enables image file paste and drag/drop insertion. |
+| `onRequestImage` | `(ctx) => { src, alt?, title? } \| { file, alt?, title? } \| null \| Promise<...>` | - | Called by Image slash command. Return `src` for already-uploaded images or `file` for local upload flow. |
+| `onUploadImage` | `(file, ctx) => { src, alt?, title? } \| null \| Promise<...>` | - | Upload hook for local files (paste/drop/slash file). |
+| `imageFallback` | `"data-url" \| "prompt-url" \| "none"` | `"prompt-url"` | Fallback when no callback inserts an image. |
+| `maxImageBytes` | `number` | `1000000` | Max file size used by `"data-url"` fallback. |
+| `onPendingUploadsChange` | `(count: number) => void` | - | Receives pending optimistic upload count. |
 | `className` | `string` | - | Extra classes for the root wrapper (`cn-editor`). |
 | `editorClassName` | `string` | - | Extra classes for the WYSIWYG surface. |
 | `...props` | `HTMLAttributes<HTMLDivElement>` | - | Forwarded to the root container. |
