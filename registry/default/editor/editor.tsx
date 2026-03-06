@@ -60,6 +60,7 @@ export type ImageUploadHandler = (
 ) => ImageUploadResult | null | Promise<ImageUploadResult | null>;
 
 const DEFAULT_MAX_IMAGE_BYTES = 1_000_000;
+const UPLOADED_IMAGE_PRELOAD_TIMEOUT_MS = 8_000;
 const UploadableImage = Image.extend({
   addAttributes() {
     return {
@@ -499,6 +500,44 @@ export function Editor({
       reader.readAsDataURL(file);
     });
 
+  const preloadImageSource = async (src: string, timeoutMs = UPLOADED_IMAGE_PRELOAD_TIMEOUT_MS): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      const image = new window.Image();
+      let settled = false;
+      const timeoutId = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        image.onload = null;
+        image.onerror = null;
+        resolve(false);
+      }, timeoutMs);
+
+      const finish = (ok: boolean): void => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
+        image.onload = null;
+        image.onerror = null;
+        resolve(ok);
+      };
+
+      image.onerror = () => finish(false);
+      image.onload = () => {
+        if (typeof image.decode === "function") {
+          void image.decode().then(
+            () => finish(true),
+            // decode errors can still have a usable image after load; keep it non-blocking.
+            () => finish(true),
+          );
+          return;
+        }
+        finish(true);
+      };
+
+      image.src = src;
+      if (image.complete && image.naturalWidth > 0) finish(true);
+    });
+
   const findImageNodeByUploadId = (
     uploadId: string,
   ): { pos: number; attrs: UploadableImageAttrs } | null => {
@@ -585,6 +624,17 @@ export function Editor({
           ...attrs,
           uploading: false,
           uploadError: "Upload failed",
+        }));
+        cleanupUpload(uploadId, { revokeBlob: false });
+        return;
+      }
+
+      const preloaded = await preloadImageSource(resolved.src);
+      if (!preloaded) {
+        finalizeImageUpload(uploadId, (attrs) => ({
+          ...attrs,
+          uploading: false,
+          uploadError: "Image uploaded, but preview failed to load",
         }));
         cleanupUpload(uploadId, { revokeBlob: false });
         return;

@@ -64,6 +64,7 @@ const requestImageAndInsert = async ({
 
   if (result.kind === "file") {
     if (!onInsertLocalImageFile) return;
+    editor.chain().focus().deleteRange(range).run();
     const fileInsertContext: ImagePickerContext & Omit<ImagePickerFileResult, "kind"> = {
       editor,
       range,
