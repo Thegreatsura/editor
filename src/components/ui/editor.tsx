@@ -144,6 +144,27 @@ const getMarkdownHtmlAction = (html: string, policy?: MarkdownHtmlPolicy): "keep
   return null;
 };
 
+const tokenizeInlineMarkdownHtml = (src: string, policy?: MarkdownHtmlPolicy) => {
+  if (!src.startsWith("<")) return undefined;
+
+  const selfClosingMatch = src.match(/^<[a-z][\w-]*(?:\s[^<>]*)?\/>/i);
+  if (selfClosingMatch) {
+    const raw = selfClosingMatch[0];
+    return getMarkdownHtmlAction(raw, policy) ? { type: RAW_MARKDOWN_HTML_INLINE, raw, text: raw } : undefined;
+  }
+
+  const openMatch = src.match(/^<([a-z][\w-]*)(?:\s[^<>]*)?>/i);
+  if (!openMatch) return undefined;
+
+  const closingPattern = new RegExp(`<\\/\\s*${openMatch[1]}\\s*>`, "i");
+  const closingMatch = closingPattern.exec(src.slice(openMatch[0].length));
+  if (!closingMatch) return undefined;
+
+  const end = openMatch[0].length + closingMatch.index + closingMatch[0].length;
+  const raw = src.slice(0, end);
+  return getMarkdownHtmlAction(raw, policy) ? { type: RAW_MARKDOWN_HTML_INLINE, raw, text: raw } : undefined;
+};
+
 const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
   TiptapNode.create({
     name: DROPPED_MARKDOWN_HTML_INLINE,
@@ -192,6 +213,29 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
 
     parseHTML() {
       return [{ tag: "span[data-raw-markdown-html]" }];
+    },
+
+    markdownTokenizer: {
+      name: RAW_MARKDOWN_HTML_INLINE,
+      level: "inline",
+      start: "<",
+      tokenize: (src: string) => tokenizeInlineMarkdownHtml(src, policy),
+    },
+
+    markdownTokenName: RAW_MARKDOWN_HTML_INLINE,
+
+    parseMarkdown(token) {
+      const html = String(token.raw || token.text || "");
+      if (!html.trim()) return [];
+      const action = getMarkdownHtmlAction(html, policy);
+      if (action === "drop") return createDroppedMarkdownHtmlNode(false);
+      if (action === "strip") return createMarkdownHtmlTextNode(html, false);
+      if (action !== "keep") return [];
+
+      return {
+        type: RAW_MARKDOWN_HTML_INLINE,
+        attrs: { html },
+      };
     },
 
     addNodeView() {
@@ -446,6 +490,39 @@ const normalizeMarkdownTables = (markdown: string): string =>
     })
     .join("\n");
 
+const normalizeMarkdownBlankLines = (markdown: string): string => {
+  const lines = markdown.split("\n");
+  const normalized: string[] = [];
+  let blankCount = 0;
+  let inFence = false;
+
+  for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      blankCount = 0;
+      normalized.push(line);
+      continue;
+    }
+
+    const trimmedLine = line.trim();
+    const isBlankLine = trimmedLine === "" || /^(?:&nbsp;|\u00A0)+$/i.test(trimmedLine);
+
+    if (!inFence && isBlankLine) {
+      blankCount += 1;
+      if (blankCount > 1) continue;
+    } else {
+      blankCount = 0;
+    }
+
+    normalized.push(line);
+  }
+
+  return normalized.join("\n").trimEnd();
+};
+
+const normalizeMarkdown = (markdown: string): string =>
+  normalizeMarkdownBlankLines(normalizeMarkdownTables(markdown));
+
 const blockOptions: Array<{ value: BlockType; label: string }> = [
   { value: "paragraph", label: "Text" },
   { value: "heading1", label: "Heading 1" },
@@ -605,7 +682,7 @@ export function Editor({
     onUpdate: ({ editor: nextEditor }) => {
       const nextValue =
         format === "markdown"
-          ? normalizeMarkdownTables(nextEditor.getMarkdown())
+          ? normalizeMarkdown(nextEditor.getMarkdown())
           : nextEditor
               .getHTML()
               .replace(/\sdata-upload-id="[^"]*"/g, "")
@@ -655,7 +732,7 @@ export function Editor({
     if (!editor) return;
     if (value === lastEmittedValueRef.current) return;
 
-    const current = format === "markdown" ? normalizeMarkdownTables(editor.getMarkdown()) : editor.getHTML();
+    const current = format === "markdown" ? normalizeMarkdown(editor.getMarkdown()) : editor.getHTML();
     const hasChanged =
       format === "markdown" ? value.trimEnd() !== current.trimEnd() : value !== current;
 
