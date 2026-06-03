@@ -84,6 +84,20 @@ const getMarkdownHtmlRootElement = (html: string): Element | null => {
   return doc.body.firstElementChild;
 };
 
+const createRawMarkdownHtmlDom = (html: string, fallbackTag: "div" | "span"): HTMLElement => {
+  const template = document.createElement("template");
+  template.innerHTML = html.trim();
+  const element = template.content.firstElementChild;
+
+  if (element instanceof HTMLElement) {
+    return element;
+  }
+
+  const fallback = document.createElement(fallbackTag);
+  fallback.textContent = html;
+  return fallback;
+};
+
 const markdownHtmlTextContent = (html: string): string => {
   if (typeof window === "undefined") {
     return html
@@ -163,6 +177,8 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
     group: "inline",
     inline: true,
     atom: true,
+    selectable: false,
+    draggable: false,
 
     addAttributes() {
       return {
@@ -176,6 +192,12 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
 
     parseHTML() {
       return [{ tag: "span[data-raw-markdown-html]" }];
+    },
+
+    addNodeView() {
+      return ({ node }) => ({
+        dom: createRawMarkdownHtmlDom(typeof node.attrs?.["html"] === "string" ? node.attrs["html"] : "", "span"),
+      });
     },
 
     renderHTML({ node, HTMLAttributes }) {
@@ -198,6 +220,8 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
     name: RAW_MARKDOWN_HTML_BLOCK,
     group: "block",
     atom: true,
+    selectable: false,
+    draggable: false,
 
     addAttributes() {
       return {
@@ -211,6 +235,12 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
 
     parseHTML() {
       return [{ tag: "div[data-raw-markdown-html]" }];
+    },
+
+    addNodeView() {
+      return ({ node }) => ({
+        dom: createRawMarkdownHtmlDom(typeof node.attrs?.["html"] === "string" ? node.attrs["html"] : "", "div"),
+      });
     },
 
     renderHTML({ node, HTMLAttributes }) {
