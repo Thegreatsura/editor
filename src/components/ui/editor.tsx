@@ -1,5 +1,5 @@
 import { type HTMLAttributes, useEffect, useRef, useState } from "react";
-import type { Editor as TiptapEditor } from "@tiptap/core";
+import { Node as TiptapNode, mergeAttributes, type Editor as TiptapEditor } from "@tiptap/core";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
@@ -45,6 +45,11 @@ import type {
 
 export type EditorFormat = "html" | "markdown";
 export type ImageFallbackMode = "data-url" | "prompt-url" | "none";
+export type MarkdownHtmlPolicy = {
+  keep?: string[];
+  strip?: string[];
+  drop?: string[];
+};
 export type ImageUploadContext = {
   editor: TiptapEditor;
   source: "paste" | "drop" | "slash";
@@ -64,6 +69,184 @@ const UPLOADED_IMAGE_PRELOAD_TIMEOUT_MS = 8_000;
 const MARKDOWN_TABLE_ROW_PATTERN = /^\s*\|.*\|\s*$/;
 const MARKDOWN_TABLE_DELIMITER_CELL_PATTERN = /^:?-{3,}:?$/;
 const TABLE_CELL_NBSP_PATTERN = /^(?:&nbsp;|\u00A0)+$/i;
+
+const RAW_MARKDOWN_HTML_BLOCK = "rawMarkdownHtmlBlock";
+const RAW_MARKDOWN_HTML_INLINE = "rawMarkdownHtmlInline";
+const DROPPED_MARKDOWN_HTML_BLOCK = "droppedMarkdownHtmlBlock";
+const DROPPED_MARKDOWN_HTML_INLINE = "droppedMarkdownHtmlInline";
+
+const normalizeMarkdownHtmlSelectors = (selectors: string[] | undefined): string[] =>
+  Array.isArray(selectors) ? selectors.map((selector) => selector.trim()).filter(Boolean) : [];
+
+const getMarkdownHtmlRootElement = (html: string): Element | null => {
+  if (typeof window === "undefined") return null;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return doc.body.firstElementChild;
+};
+
+const markdownHtmlTextContent = (html: string): string => {
+  if (typeof window === "undefined") {
+    return html
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
+};
+
+const createMarkdownHtmlTextNode = (html: string, block?: boolean) => {
+  const text = markdownHtmlTextContent(html);
+  if (!text) return createDroppedMarkdownHtmlNode(block);
+
+  const textNode = { type: "text", text };
+  return block ? { type: "paragraph", content: [textNode] } : textNode;
+};
+
+const createDroppedMarkdownHtmlNode = (block?: boolean) => ({
+  type: block ? DROPPED_MARKDOWN_HTML_BLOCK : DROPPED_MARKDOWN_HTML_INLINE,
+});
+
+const markdownHtmlSelectorMatches = (element: Element, selector: string): boolean => {
+  try {
+    return element.matches(selector);
+  } catch (error) {
+    console.warn(`Ignoring invalid markdownHtml selector "${selector}".`, error);
+    return false;
+  }
+};
+
+const markdownHtmlMatches = (element: Element, selectors: string[] | undefined): boolean =>
+  normalizeMarkdownHtmlSelectors(selectors).some((selector) => markdownHtmlSelectorMatches(element, selector));
+
+const getMarkdownHtmlAction = (html: string, policy?: MarkdownHtmlPolicy): "keep" | "strip" | "drop" | null => {
+  if (!policy) return null;
+  const root = getMarkdownHtmlRootElement(html);
+  if (!root) return null;
+  if (markdownHtmlMatches(root, policy.drop)) return "drop";
+  if (markdownHtmlMatches(root, policy.strip)) return "strip";
+  if (markdownHtmlMatches(root, policy.keep)) return "keep";
+  return null;
+};
+
+const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
+  TiptapNode.create({
+    name: DROPPED_MARKDOWN_HTML_INLINE,
+    group: "inline",
+    inline: true,
+    atom: true,
+
+    renderHTML() {
+      return ["span", { "data-dropped-markdown-html": "", hidden: "true" }];
+    },
+
+    renderMarkdown() {
+      return "";
+    },
+  }),
+  TiptapNode.create({
+    name: DROPPED_MARKDOWN_HTML_BLOCK,
+    group: "block",
+    atom: true,
+
+    renderHTML() {
+      return ["div", { "data-dropped-markdown-html": "", hidden: "true" }];
+    },
+
+    renderMarkdown() {
+      return "";
+    },
+  }),
+  TiptapNode.create({
+    name: RAW_MARKDOWN_HTML_INLINE,
+    group: "inline",
+    inline: true,
+    atom: true,
+
+    addAttributes() {
+      return {
+        html: {
+          default: "",
+          parseHTML: (element: HTMLElement) => element.getAttribute("data-raw-markdown-html") ?? "",
+          renderHTML: () => ({}),
+        },
+      };
+    },
+
+    parseHTML() {
+      return [{ tag: "span[data-raw-markdown-html]" }];
+    },
+
+    renderHTML({ node, HTMLAttributes }) {
+      const html = typeof node.attrs?.["html"] === "string" ? node.attrs["html"] : "";
+      return [
+        "span",
+        mergeAttributes(HTMLAttributes, {
+          "data-raw-markdown-html": html,
+          contenteditable: "false",
+        }),
+        html,
+      ];
+    },
+
+    renderMarkdown(node) {
+      return typeof node.attrs?.["html"] === "string" ? node.attrs["html"] : "";
+    },
+  }),
+  TiptapNode.create({
+    name: RAW_MARKDOWN_HTML_BLOCK,
+    group: "block",
+    atom: true,
+
+    addAttributes() {
+      return {
+        html: {
+          default: "",
+          parseHTML: (element: HTMLElement) => element.getAttribute("data-raw-markdown-html") ?? "",
+          renderHTML: () => ({}),
+        },
+      };
+    },
+
+    parseHTML() {
+      return [{ tag: "div[data-raw-markdown-html]" }];
+    },
+
+    renderHTML({ node, HTMLAttributes }) {
+      const html = typeof node.attrs?.["html"] === "string" ? node.attrs["html"] : "";
+      return [
+        "div",
+        mergeAttributes(HTMLAttributes, {
+          "data-raw-markdown-html": html,
+          contenteditable: "false",
+        }),
+        html,
+      ];
+    },
+
+    markdownTokenName: "html",
+
+    parseMarkdown(token) {
+      const html = String(token.raw || token.text || "");
+      if (!html.trim()) return [];
+      const action = getMarkdownHtmlAction(html, policy);
+      if (action === "drop") return createDroppedMarkdownHtmlNode(token["block"]);
+      if (action === "strip") return createMarkdownHtmlTextNode(html, token["block"]);
+      if (action !== "keep") return [];
+
+      return {
+        type: token["block"] ? RAW_MARKDOWN_HTML_BLOCK : RAW_MARKDOWN_HTML_INLINE,
+        attrs: { html },
+      };
+    },
+
+    renderMarkdown(node) {
+      return typeof node.attrs?.["html"] === "string" ? node.attrs["html"] : "";
+    },
+  }),
+];
+
 const UploadableImage = Image.extend({
   addAttributes() {
     return {
@@ -102,6 +285,7 @@ export type EditorProps = {
   maxImageBytes?: number;
   onRequestImage?: ImagePickerHandler;
   onPendingUploadsChange?: (count: number) => void;
+  markdownHtml?: MarkdownHtmlPolicy;
   className?: string;
   editorClassName?: string;
 } & Omit<HTMLAttributes<HTMLDivElement>, "onChange" | "className">;
@@ -255,6 +439,7 @@ export function Editor({
   maxImageBytes = DEFAULT_MAX_IMAGE_BYTES,
   onRequestImage,
   onPendingUploadsChange,
+  markdownHtml,
   className,
   editorClassName,
   ...props
@@ -297,6 +482,7 @@ export function Editor({
       TableRow,
       TableHeader,
       TableCell,
+      ...createRawMarkdownHtmlExtensions(markdownHtml),
       Placeholder.configure({
         placeholder: ({
           node,

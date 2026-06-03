@@ -81,6 +81,27 @@ Notes:
 - `className` applies classes to the root wrapper (`cn-editor`).
 - `editorClassName` applies classes to the WYSIWYG surface only.
 
+## Markdown HTML Policy
+
+In Markdown mode, raw HTML is parsed through TipTap by default. Use `markdownHtml`
+to control matching raw HTML fragments by CSS selector:
+
+```tsx
+<Editor
+  format="markdown"
+  value={value}
+  onChange={setValue}
+  markdownHtml={{
+    keep: ["div.callout", "span[data-keep]", "u"],
+    strip: ["div.legacy-wrapper"],
+    drop: ["script", "style", "iframe"],
+  }}
+/>
+```
+
+Policy precedence is `drop`, then `strip`, then `keep`, then the default TipTap
+Markdown behavior. Selectors match the root element of the raw HTML fragment.
+
 ## Image Workflows
 
 `Editor` supports both pre-uploaded URLs and local file uploads.
@@ -154,6 +175,7 @@ export function EditorWithSourceToggle() {
 | `imageFallback` | `"data-url" \| "prompt-url" \| "none"` | `"prompt-url"` | Fallback when no callback inserts an image. |
 | `maxImageBytes` | `number` | `1000000` | Max file size used by `"data-url"` fallback. |
 | `onPendingUploadsChange` | `(count: number) => void` | - | Receives pending optimistic upload count. |
+| `markdownHtml` | `{ keep?: string[]; strip?: string[]; drop?: string[] }` | - | Controls raw HTML fragments in Markdown mode using root-element CSS selectors. |
 | `className` | `string` | - | Extra classes for the root wrapper (`cn-editor`). |
 | `editorClassName` | `string` | - | Extra classes for the WYSIWYG surface. |
 | `...props` | `HTMLAttributes<HTMLDivElement>` | - | Forwarded to the root container. |
