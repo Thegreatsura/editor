@@ -84,6 +84,13 @@ const getMarkdownHtmlRootElement = (html: string): Element | null => {
   return doc.body.firstElementChild;
 };
 
+const getMarkdownHtmlTopLevelNodes = (html: string): ChildNode[] => {
+  if (typeof window === "undefined") return [];
+  const template = document.createElement("template");
+  template.innerHTML = html.trim();
+  return Array.from(template.content.childNodes);
+};
+
 const createRawMarkdownHtmlDom = (html: string, fallbackTag: "div" | "span"): HTMLElement => {
   const template = document.createElement("template");
   template.innerHTML = html.trim();
@@ -122,6 +129,11 @@ const createDroppedMarkdownHtmlNode = (block?: boolean) => ({
   type: block ? DROPPED_MARKDOWN_HTML_BLOCK : DROPPED_MARKDOWN_HTML_INLINE,
 });
 
+const createRawMarkdownHtmlNode = (html: string, block?: boolean) => ({
+  type: block ? RAW_MARKDOWN_HTML_BLOCK : RAW_MARKDOWN_HTML_INLINE,
+  attrs: { html },
+});
+
 const markdownHtmlSelectorMatches = (element: Element, selector: string): boolean => {
   try {
     return element.matches(selector);
@@ -142,6 +154,37 @@ const getMarkdownHtmlAction = (html: string, policy?: MarkdownHtmlPolicy): "keep
   if (markdownHtmlMatches(root, policy.strip)) return "strip";
   if (markdownHtmlMatches(root, policy.keep)) return "keep";
   return null;
+};
+
+const createMarkdownHtmlPolicyNode = (html: string, action: "keep" | "strip" | "drop", block?: boolean) => {
+  if (action === "drop") return createDroppedMarkdownHtmlNode(block);
+  if (action === "strip") return createMarkdownHtmlTextNode(html, block);
+  return createRawMarkdownHtmlNode(html, block);
+};
+
+const createMarkdownHtmlPolicyNodes = (html: string, policy: MarkdownHtmlPolicy | undefined, block?: boolean) => {
+  const topLevelNodes = getMarkdownHtmlTopLevelNodes(html);
+  if (topLevelNodes.length <= 1) {
+    const action = getMarkdownHtmlAction(html, policy);
+    return action ? createMarkdownHtmlPolicyNode(html, action, block) : [];
+  }
+
+  const parsedNodes = topLevelNodes.flatMap((node) => {
+    if (node instanceof Text) {
+      const text = node.textContent?.replace(/\s+/g, " ").trim();
+      return text ? [block ? { type: "paragraph", content: [{ type: "text", text }] } : { type: "text", text }] : [];
+    }
+
+    if (!(node instanceof Element)) return [];
+
+    const outerHTML = node.outerHTML;
+    const action = getMarkdownHtmlAction(outerHTML, policy);
+    return action ? [createMarkdownHtmlPolicyNode(outerHTML, action, block)] : [createMarkdownHtmlTextNode(outerHTML, block)];
+  });
+
+  return parsedNodes.some((node) => node.type === RAW_MARKDOWN_HTML_BLOCK || node.type === RAW_MARKDOWN_HTML_INLINE || node.type === DROPPED_MARKDOWN_HTML_BLOCK || node.type === DROPPED_MARKDOWN_HTML_INLINE)
+    ? parsedNodes
+    : [];
 };
 
 const tokenizeInlineMarkdownHtml = (src: string, policy?: MarkdownHtmlPolicy) => {
@@ -171,6 +214,8 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
     group: "inline",
     inline: true,
     atom: true,
+    selectable: false,
+    draggable: false,
 
     renderHTML() {
       return ["span", { "data-dropped-markdown-html": "", hidden: "true" }];
@@ -184,6 +229,8 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
     name: DROPPED_MARKDOWN_HTML_BLOCK,
     group: "block",
     atom: true,
+    selectable: false,
+    draggable: false,
 
     renderHTML() {
       return ["div", { "data-dropped-markdown-html": "", hidden: "true" }];
@@ -227,15 +274,7 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
     parseMarkdown(token) {
       const html = String(token.raw || token.text || "");
       if (!html.trim()) return [];
-      const action = getMarkdownHtmlAction(html, policy);
-      if (action === "drop") return createDroppedMarkdownHtmlNode(false);
-      if (action === "strip") return createMarkdownHtmlTextNode(html, false);
-      if (action !== "keep") return [];
-
-      return {
-        type: RAW_MARKDOWN_HTML_INLINE,
-        attrs: { html },
-      };
+      return createMarkdownHtmlPolicyNodes(html, policy, false);
     },
 
     addNodeView() {
@@ -304,15 +343,7 @@ const createRawMarkdownHtmlExtensions = (policy?: MarkdownHtmlPolicy) => [
     parseMarkdown(token) {
       const html = String(token.raw || token.text || "");
       if (!html.trim()) return [];
-      const action = getMarkdownHtmlAction(html, policy);
-      if (action === "drop") return createDroppedMarkdownHtmlNode(token["block"]);
-      if (action === "strip") return createMarkdownHtmlTextNode(html, token["block"]);
-      if (action !== "keep") return [];
-
-      return {
-        type: token["block"] ? RAW_MARKDOWN_HTML_BLOCK : RAW_MARKDOWN_HTML_INLINE,
-        attrs: { html },
-      };
+      return createMarkdownHtmlPolicyNodes(html, policy, token["block"]);
     },
 
     renderMarkdown(node) {
