@@ -33,6 +33,11 @@
           "target": "components/ui/editor/index.tsx"
         },
         {
+          "path": "src/components/ui/typeset.css",
+          "type": "registry:component",
+          "target": "components/ui/editor/typeset.css"
+        },
+        {
           "path": "registry/default/editor/slash-command/commands.ts",
           "type": "registry:component",
           "target": "components/ui/editor/slash-command/commands.ts"

@@ -5,6 +5,11 @@ const rootDir = process.cwd();
 const registryDir = join(rootDir, "registry", "default");
 const packageJsonPath = join(rootDir, "package.json");
 const registryManifestPath = join(rootDir, "registry.json");
+const typesetStylesheetPath = join(rootDir, "src", "components", "ui", "typeset.css");
+const editorComponentPaths = [
+  join(rootDir, "src", "components", "ui", "editor.tsx"),
+  join(rootDir, "registry", "default", "editor", "editor.tsx"),
+];
 
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 const declared = new Set(Object.keys(packageJson.dependencies ?? {}));
@@ -109,6 +114,33 @@ if (!registryItem) {
 for (const pkg of registryDeclared) {
   if (!declared.has(pkg)) {
     console.error(`Registry dependency check failed. "${pkg}" is in registry.json but missing from package.json dependencies.`);
+    process.exit(1);
+  }
+}
+
+const typesetStylesheet = readFileSync(typesetStylesheetPath, "utf8");
+const expectedLayerOrder = "@layer theme, base, components, utilities;";
+
+if (!typesetStylesheet.includes(expectedLayerOrder)) {
+  console.error(
+    `Registry dependency check failed. typeset.css must declare \"${expectedLayerOrder}\" before its component rules so Tailwind's base reset does not override them.`,
+  );
+  process.exit(1);
+}
+
+if (/\{[^{}]*&(?:\s|:|\[|\.)/s.test(typesetStylesheet)) {
+  console.error(
+    "Registry dependency check failed. typeset.css contains nested selectors; registry consumers must receive flattened CSS.",
+  );
+  process.exit(1);
+}
+
+for (const editorComponentPath of editorComponentPaths) {
+  const editorComponent = readFileSync(editorComponentPath, "utf8");
+  if (/handleDOMEvents\s*:\s*\{[\s\S]*?\bcopy\s*:/.test(editorComponent)) {
+    console.error(
+      "Registry dependency check failed. The editor must use ProseMirror's native clipboard serializer so copy provides structural HTML and marker-free plain text.",
+    );
     process.exit(1);
   }
 }

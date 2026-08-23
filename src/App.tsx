@@ -9,98 +9,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./comp
 
 const THEME_STORAGE_KEY = "pages-editor-theme";
 const COPY_FEEDBACK_MS = 1500;
-const DEFAULT_EDITOR_CONTENT_CSS = `@layer components {
-   .cn-editor .tiptap {
-    @apply border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm;
-  }
-
-  .cn-editor .tiptap > :first-child {
-    @apply mt-0;
-  }
-
-  .cn-editor .tiptap > :last-child {
-    @apply mb-0;
-  }
-
-  .cn-editor .tiptap h1 {
-    @apply mt-8 mb-3 scroll-m-20 text-4xl font-bold tracking-tight text-balance;
-  }
-
-  .cn-editor .tiptap h2 {
-    @apply mt-8 mb-3 scroll-m-20 text-3xl font-semibold tracking-tight first:mt-0;
-  }
-
-  .cn-editor .tiptap h3 {
-    @apply mt-6 mb-2 scroll-m-20 text-2xl font-semibold tracking-tight;
-  }
-
-  .cn-editor .tiptap p {
-    @apply leading-7 [&:not(:first-child)]:mt-4;
-  }
-
-  .cn-editor .tiptap ul {
-    @apply my-4 ml-6 list-disc;
-  }
-
-  .cn-editor .tiptap ol {
-    @apply my-4 ml-6 list-decimal;
-  }
-
-  .cn-editor .tiptap blockquote {
-    @apply my-6 border-l-2 pl-6 italic;
-  }
-
-  .cn-editor .tiptap img {
-    @apply my-4 transition-shadow;
-    
-    &.ProseMirror-selectednode {
-      @apply ring-1;
-    }
-  }
-
-  .cn-editor .tiptap a {
-    @apply font-medium text-primary underline decoration-dotted underline-offset-4;
-  }
-
-  .cn-editor .tiptap code {
-    @apply relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm;
-  }
-
-  .cn-editor .tiptap pre {
-    @apply my-4 overflow-x-auto rounded-xl bg-background p-4;
-  }
-
-  .cn-editor .tiptap pre code {
-    @apply bg-transparent p-0;
-  }
-
-  .cn-editor .tiptap table {
-    @apply my-4 w-full border-collapse;
-  }
-
-  .cn-editor .tiptap th,
-  .cn-editor .tiptap td {
-    @apply border px-3 py-2 text-left;
-  }
-
-  .cn-editor .tiptap th {
-    @apply bg-muted font-medium;
-  }
-
-  .cn-editor .tiptap .selectedCell {
-    @apply text-foreground;
-    outline: 1px solid var(--ring);
-  }
-
-  .cn-editor .tiptap .selectedCell::after {
-    content: none;
-  }
-
-  .cn-editor .tiptap .selectedCell::selection,
-  .cn-editor .tiptap .selectedCell *::selection {
-    @apply bg-accent text-foreground!;
-  }
-}`;
 
 const INITIAL_MARKDOWN_VALUE = `Start writing in Markdown or use the bubble menu in editor mode.
 
@@ -427,13 +335,12 @@ export function EditorWithSourceToggle() {
           />
 
           <h3 className="font-heading mt-12 scroll-m-28 text-lg font-medium tracking-tight [&+p]:mt-4! *:[code]:text-xl">
-            Default Content Styles
+            Typography
           </h3>
           <p className="leading-relaxed [&:not(:first-child)]:mt-6">
-            The editor works without these styles, but you can copy this baseline stylesheet to get the same content
-            typography as the demo.
+            The registry component ships with shadcn/ui Typeset styling for editor content. No separate typography
+            stylesheet is required.
           </p>
-          <HighlightedCode dark={resolvedIsDark} lang="css" code={DEFAULT_EDITOR_CONTENT_CSS} />
 
           <h3 className="font-heading mt-12 scroll-m-28 text-lg font-medium tracking-tight [&+p]:mt-4! *:[code]:text-xl">
             Options

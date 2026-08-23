@@ -12,7 +12,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import { Markdown } from "@tiptap/markdown";
-import { DOMSerializer, type Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { type Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import {
   Bold,
@@ -33,6 +33,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import "./typeset.css";
 import SlashCommands from "./slash-command/commands";
 import type {
   ImagePickerContext,
@@ -596,7 +597,7 @@ export function Editor({
   const objectUrlByUploadIdRef = useRef(new Map<string, string>());
   const expectedBlobByUploadIdRef = useRef(new Map<string, string>());
   const tiptapSurfaceClass = cn(
-    "border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm [&_p.is-empty::before]:text-muted-foreground [&_p.is-empty::before]:content-[attr(data-placeholder)] [&_p.is-empty::before]:pointer-events-none [&_p.is-empty::before]:float-left [&_p.is-empty::before]:h-0 [&_td_p.is-empty::before]:content-none [&_th_p.is-empty::before]:content-none [&_img[data-uploading=true]]:opacity-70 [&_img[data-uploading=true]]:animate-pulse [&_img[data-upload-error]]:ring-2 [&_img[data-upload-error]]:ring-destructive [&_img[data-upload-error]]:ring-offset-2 [&_img[data-upload-error]]:ring-offset-background",
+    "typeset typeset-editor border-input placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 min-h-16 w-full rounded-md border bg-transparent px-3 py-2 shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] [&_p.is-empty::before]:text-muted-foreground [&_p.is-empty::before]:content-[attr(data-placeholder)] [&_p.is-empty::before]:pointer-events-none [&_p.is-empty::before]:float-left [&_p.is-empty::before]:h-0 [&_td_p.is-empty::before]:content-none [&_th_p.is-empty::before]:content-none [&_img[data-uploading=true]]:opacity-70 [&_img[data-uploading=true]]:animate-pulse [&_img[data-upload-error]]:ring-2 [&_img[data-upload-error]]:ring-destructive [&_img[data-upload-error]]:ring-offset-2 [&_img[data-upload-error]]:ring-offset-background",
     editorClassName,
   );
 
@@ -655,33 +656,6 @@ export function Editor({
     editorProps: {
       attributes: {
         class: tiptapSurfaceClass,
-      },
-      handleDOMEvents: {
-        copy: (_view, event) => {
-          if (!editor) return false;
-
-          const copyEvent = event as ClipboardEvent;
-          if (!copyEvent.clipboardData || editor.state.selection.empty) return false;
-
-          const selectionFragment = editor.state.selection.content().content;
-
-          if (format === "markdown") {
-            const markdown = editor.storage.markdown?.manager?.serialize(selectionFragment.toJSON()) ?? "";
-            copyEvent.clipboardData.setData("text/plain", markdown);
-            copyEvent.preventDefault();
-            return true;
-          }
-
-          const serializer = DOMSerializer.fromSchema(editor.state.schema);
-          const container = document.createElement("div");
-          container.append(serializer.serializeFragment(selectionFragment));
-          const html = container.innerHTML;
-
-          copyEvent.clipboardData.setData("text/html", html);
-          copyEvent.clipboardData.setData("text/plain", html);
-          copyEvent.preventDefault();
-          return true;
-        },
       },
       handlePaste: (_view, event) => {
         if (!enableImages || !enableImagePasteDrop) return false;
